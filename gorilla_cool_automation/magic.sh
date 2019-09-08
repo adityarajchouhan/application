@@ -5,7 +5,7 @@ export AWS_DEFAULT_REGION=us-east-1
 CFN_BUCKET=cfn-templates-gorilla-ricardo
 STACK_NAME=timeoff-app
 REPO_NAME=$STACK_NAME
-KEY_NAME=timeoff-key
+KEY_NAME=timeoff-key-ricardo
 
 # Create the ssh key
 ls $KEY_NAME >/dev/null 2>&1 || ssh-keygen -f $KEY_NAME -N "" -m PEM -t rsa
