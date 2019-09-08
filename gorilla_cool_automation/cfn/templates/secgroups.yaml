@@ -1,0 +1,53 @@
+Parameters:
+
+  VPC:
+    Type: AWS::EC2::VPC::Id
+
+Resources:
+
+  LBSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: !Sub ${AWS::StackName}-LoadBalancer
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: "TCP"
+          FromPort: 80
+          ToPort: 80
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-LoadBalancer
+      VpcId: !Ref VPC
+
+  WebSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: !Sub ${AWS::StackName}-Web
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref LBSecurityGroup
+          IpProtocol: -1
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Web
+      VpcId: !Ref VPC 
+
+  EFSSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: !Sub ${AWS::StackName}-EFS
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref WebSecurityGroup
+          IpProtocol: -1
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-EFS
+      VpcId: !Ref VPC
+
+Outputs:
+
+  WebSecurityGroup:
+    Value: !Ref WebSecurityGroup
+  LBSecurityGroup:
+    Value: !Ref LBSecurityGroup
+  EFSSecurityGroup:
+    Value: !Ref EFSSecurityGroup

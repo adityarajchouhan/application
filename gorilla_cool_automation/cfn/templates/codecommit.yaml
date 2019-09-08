@@ -1,0 +1,21 @@
+Parameters:
+
+  RepoName:
+    Type: String
+    Description: Name for CodeCommit repo
+
+Resources:
+
+  MyRepo:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Ref RepoName
+      RepositoryDescription: Gorilla logic test
+    DeletionPolicy: Retain
+
+Outputs:
+
+  RepositoryName:
+    Value: !GetAtt MyRepo.Name
+  CloneURLHTTP:
+    Value: !GetAtt MyRepo.CloneUrlHttp

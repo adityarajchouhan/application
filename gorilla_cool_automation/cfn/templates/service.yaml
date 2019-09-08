@@ -1,0 +1,79 @@
+Parameters:
+
+  DockerTag:
+    Type: String
+    Description: Tag used to create/update the container
+
+  DesiredCount:
+    Type: Number
+    Default: 2
+    Description: Desired number of containers running accross the cluster
+
+  Cluster:
+    Type: String
+    Description: ECS Cluster name
+
+  ECRRepo:
+    Type: String
+    Description: ECS repository name where images will be pulled from
+
+  TargetGroupARN:
+    Type: String
+    Description: ARN for the target group that will be registered
+
+Resources:
+
+  ECSServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action: ['elasticloadbalancing:DeregisterInstancesFromLoadBalancer', 'elasticloadbalancing:DeregisterTargets',
+              'elasticloadbalancing:Describe*', 'elasticloadbalancing:RegisterInstancesWithLoadBalancer',
+              'elasticloadbalancing:RegisterTargets', 'ec2:Describe*', 'ec2:AuthorizeSecurityGroupIngress']
+            Resource: '*'
+
+  Service:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref Cluster
+      DesiredCount: !Ref DesiredCount
+      TaskDefinition: !Ref TaskDefinition
+      LoadBalancers:
+        - ContainerName: timeoff
+          ContainerPort: '3000'
+          TargetGroupArn: !Ref TargetGroupARN
+      Role: !Ref 'ECSServiceRole'
+      DeploymentConfiguration:
+        MaximumPercent: 100
+        MinimumHealthyPercent: 50
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-TaskDefinition
+      ContainerDefinitions:
+        - Name: timeoff
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepo}:${DockerTag}
+          Essential: true
+          Memory: 700
+          PortMappings:
+            - ContainerPort: 3000
+              HostPort: 0
+          MountPoints: 
+            - SourceVolume: "efs"
+              ContainerPath: "/db"
+      Volumes:       
+        - Host:
+            SourcePath: /efs-data
+          Name: "efs"

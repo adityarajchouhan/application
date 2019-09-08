@@ -1,0 +1,19 @@
+Resources:
+
+  Repository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+
+Outputs:
+
+  ECR:
+    Description: ECR Name
+    Value: !Ref Repository
+
+  ECRURLConsole:
+    Description: ECR URL Console
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/ecs/home?region=${AWS::Region}#/repositories/${Repository}
+
+  ECRURLDocker:
+    Description: ECR URL Docker
+    Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}

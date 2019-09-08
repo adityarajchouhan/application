@@ -1,0 +1,145 @@
+Description: ECS Cluster
+# Just parameters here
+Parameters:
+  AMI: 
+    Type: String
+    Default: ami-0c09d65d2051ada93
+    Description: AMI ID for ECS cluster instances
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: VPC Subnets where EC2 instances and EFS monunts will be placed
+  InstanceType:
+    Type: String
+    Description: The EC2 instance type used for the cluster
+    Default: t2.micro
+  MaxSize:
+    Type: Number
+    Description: Maximum size of the auto-scaling group
+    Default: 2
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 KeyPair name to use for SSH access to the instance
+  DesiredCapacity:
+    Type: Number
+    Description: Desired ECS cluster size
+    Default: 2
+  EFSMountPoint:
+    Type: String
+    Description: The full path to mount the created EFS (It is ok if the path does not exist)
+    Default: "/efs-data"
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: SecurityGroup Id attached to the instances
+  FileSystem:
+    Type: String
+    Description: EFS ID to mount
+
+
+Resources:
+
+  ECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument: |
+        {
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": { "Service": [ "ec2.amazonaws.com" ]},
+                "Action": [ "sts:AssumeRole" ]
+            }]
+        }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref ECSRole
+
+  ECSCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: !Sub ${AWS::StackName}-ECSCluster
+
+  ECSAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: !Ref Subnets
+      LaunchConfigurationName: !Ref ECSLaunchConfig
+      MinSize: 1
+      MaxSize: !Ref MaxSize
+      DesiredCapacity: !Ref DesiredCapacity
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+          PropagateAtLaunch: true
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT10M
+    UpdatePolicy:
+      AutoScalingReplacingUpdate:
+        WillReplace: 'true'
+
+  ECSLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          GorillaECS:
+            - "ECS-Config"
+            - "EFS"
+        ECS-Config:
+          commands:
+            01_add_instance_to_cluster:
+              command: !Sub echo ECS_CLUSTER=${ECSCluster} > /etc/ecs/ecs.config
+        EFS:
+          packages:
+            yum:
+              nfs-utils: []
+          commands:
+            01_efs_mount_point:
+              command: !Sub "if ! ls 2> /dev/null ${EFSMountPoint}; then mkdir -p ${EFSMountPoint} && echo 'Created!'; fi > /tmp/efs-dir.log 2>&1"
+            02_mount_perm_efs:
+              command: !Sub "echo '${FileSystem}.efs.${AWS::Region}.amazonaws.com:/ ${EFSMountPoint} nfs nfsvers=4.1 0 0' | tee -a /etc/fstab > /tmp/perm-efs.log 2>&1"
+            03_mount_efs:
+              command: !Sub "mount -t nfs4 -o nfsvers=4.1 ${FileSystem}.efs.${AWS::Region}.amazonaws.com:/ ${EFSMountPoint} > /tmp/efs.log 2>&1"
+            04_permissions:
+              command: !Sub "chown 100:100 -R ${EFSMountPoint} > /tmp/permissions.log 2>&1"
+    Properties:
+      ImageId: !Ref AMI
+      SecurityGroups:
+        - !Ref ECSSecurityGroup
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      KeyName: !Ref KeyPairName
+      UserData:
+        "Fn::Base64": !Sub |
+          #!/bin/bash
+          yum install -y aws-cfn-bootstrap aws-cli
+
+          ## Initialize CloudFormation
+          /opt/aws/bin/cfn-init -v         \
+            --region ${AWS::Region}        \
+            --stack ${AWS::StackName}      \
+            --resource ECSLaunchConfig \
+            --configsets GorillaECS > /tmp/cfn-init.log 2>&1
+
+          ## Signal the status from cfn-init
+          /opt/aws/bin/cfn-signal -e $? \
+            --region ${AWS::Region}     \
+            --stack ${AWS::StackName}   \
+            --resource ECSAutoScalingGroup
+
+# Outputs from here
+Outputs:
+  ECSCluster:
+    Value: !Ref ECSCluster
+  ECSAutoScalingGroup:
+    Value: !Ref ECSAutoScalingGroup
+  ECSLaunchConfig:
+    Value: !Ref ECSLaunchConfig
+  ECSSecurityGroup:
+    Value: !Ref ECSSecurityGroup

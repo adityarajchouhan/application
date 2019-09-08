@@ -1,0 +1,138 @@
+Description: Master template for gorilla test
+
+Parameters:
+
+  VpcCIDR:
+    Type: String
+    Default: 10.100.0.0/16
+    Description: CIDR Address for VPC
+
+  Subnet1CIDR:
+    Type: String
+    Default: 10.100.10.0/24
+    Description: CIDR Address for Subnet1
+    
+  Subnet2CIDR:
+    Type: String
+    Default: 10.100.20.0/24
+    Description: CIDR Address for Subnet2
+
+  TargetBranch:
+    Type: String
+    Description: CodeCommit branch listening to events
+
+  TemplateBucket:
+    Type: String
+    Description: Bucket where the templates are stored
+
+  RepoName:
+    Type: String
+    Description: Name for codecommit repository to store the app's code
+
+  AMI:
+    Type: String
+    Description: AMI to use for the ecs cluster
+    Default: ami-0c09d65d2051ada93
+
+  InstanceType:
+    Type: String
+    Description: Ec2 instance type
+    Default: t2.micro  
+
+  MaxSize:
+    Type: Number
+    Description: Maximum size of the auto-scaling group
+    Default: 2
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 KeyPair name to use for SSH access to the instance
+
+  DesiredCapacity:
+    Type: Number
+    Description: Desired ECS cluster size
+    Default: 2
+
+  EcsDesiredCount:
+    Type: String
+    Description: Desired count for continers
+    Default: 2
+
+Resources:
+
+  VPC:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplateBucket}/templates/vpc.yaml
+      Parameters:
+        VpcCIDR: !Ref VpcCIDR
+        Subnet1CIDR: !Ref Subnet1CIDR
+        Subnet2CIDR: !Ref Subnet2CIDR
+
+  SecGroups:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplateBucket}/templates/secgroups.yaml
+      Parameters:
+        VPC: !GetAtt VPC.Outputs.VpcId
+
+  ECR:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplateBucket}/templates/ecr.yaml
+
+  CodeCommit:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplateBucket}/templates/codecommit.yaml
+      Parameters:
+        RepoName: !Ref RepoName
+
+  Pipeline:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplateBucket}/templates/pipeline.yaml
+      Parameters:
+        Repository: !GetAtt ECR.Outputs.ECR
+        RepoName: !Ref RepoName
+        TargetBranch: !Ref TargetBranch
+        Cluster: !GetAtt ECSCluster.Outputs.ECSCluster
+        DesiredCount: !Ref EcsDesiredCount
+        TargetGroupArn: !GetAtt ALB.Outputs.LBTargetGroupArn
+        TemplateBucket: !Ref TemplateBucket
+
+  EFS:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplateBucket}/templates/efs.yaml
+      Parameters:
+        Subnet1Id: !GetAtt VPC.Outputs.Subnet1Id
+        Subnet2Id: !GetAtt VPC.Outputs.Subnet2Id
+        EFSSecurityGroup: !GetAtt SecGroups.Outputs.EFSSecurityGroup
+
+  ECSCluster:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - EFS
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplateBucket}/templates/ecs-cluster.yaml
+      Parameters:
+        AMI: !Ref AMI
+        Subnets: !GetAtt VPC.Outputs.Subnets
+        InstanceType: !Ref InstanceType
+        MaxSize: !Ref MaxSize
+        KeyPairName: !Ref KeyPairName
+        DesiredCapacity: !Ref DesiredCapacity
+        EFSMountPoint: '/efs-data'
+        ECSSecurityGroup: !GetAtt SecGroups.Outputs.WebSecurityGroup
+        FileSystem: !GetAtt EFS.Outputs.FileSystemId
+
+  ALB:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplateBucket}/templates/load-balancer.yaml
+      Parameters:
+        VpcId: !GetAtt VPC.Outputs.VpcId
+        Subnets: !GetAtt VPC.Outputs.Subnets
+        LBSecurityGroup: !GetAtt SecGroups.Outputs.LBSecurityGroup
+

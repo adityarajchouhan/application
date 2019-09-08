@@ -1,0 +1,49 @@
+Parameters:
+
+  Subnet1Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: ID for Subnet A
+
+  Subnet2Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: ID for Subnet B
+
+  EFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group ID for EFS
+
+Resources:
+
+  FileSystem:
+    Type: AWS::EFS::FileSystem
+    DeletionPolicy: Retain
+    Properties:
+      PerformanceMode: generalPurpose
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-EFS
+
+  MountTarget1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SubnetId: !Ref Subnet1Id
+      SecurityGroups:
+        - !Ref EFSSecurityGroup
+
+  MountTarget2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SubnetId: !Ref Subnet2Id
+      SecurityGroups:
+        - !Ref EFSSecurityGroup
+
+Outputs:
+
+  FileSystemId:
+    Value: !Ref FileSystem
+  MountTarget1ID:
+    Value: !Ref MountTarget1
+  MountTarget2ID:
+    Value: !Ref MountTarget2
