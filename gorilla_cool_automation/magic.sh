@@ -2,7 +2,7 @@
 
 export AWS_DEFAULT_REGION=us-east-1
 
-CFN_BUCKET=cfn-templates-gorilla
+CFN_BUCKET=cfn-templates-gorilla-ricardo
 STACK_NAME=timeoff-app
 REPO_NAME=$STACK_NAME
 KEY_NAME=timeoff-key
